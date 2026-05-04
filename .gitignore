@@ -8,3 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+
+# HLS4ML
+gaussian_hls4ml/
+gaussian_hls4ml_Q/
