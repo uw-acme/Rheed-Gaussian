@@ -1,0 +1,88 @@
+# Configuration for train_real.py (script version of Real_Flow.ipynb).
+#
+# Usage:
+#   python train_real.py configs/real.yaml
+#
+# Every constant that was a module-level global in the notebook lives here.
+# Relative paths are resolved from the directory the script is run in.
+
+seed: 0
+
+# ----------------------------------------------------------------------------
+# Real RHEED spot crops: <growth>/<spot> datasets of shape (N, y, x)
+# ----------------------------------------------------------------------------
+data:
+  path: ../data/RHEED_4848_test6.h5   # RHEED_data_file
+  spots: [spot_1, spot_2, spot_3]     # SPOTS
+  training_growths: 7    # TRAINING_GROWTHS
+  validation_growths: 2  # VALIDATION_GROWTHS
+  test_growths: 1        # TEST_GROWTHS
+  images_per_growth: 10000  # IMAGES_PER_GROWTH (crops sampled without replacement per growth and spot)
+
+image:
+  x: 48                  # GAUSSIAN_X (crop width, pixels)
+  y: 48                  # GAUSSIAN_Y (crop height, pixels)
+
+# Crops are background-subtracted (per-crop minimum) and divided by 256; crops
+# whose resulting peak is below min_peak are dropped ("bad crops").
+filter:
+  min_peak: 0.1          # is_valid_image: img.max() < min_peak -> invalid
+
+# Model outputs are normalized parameters; multiplying by `scaling` recovers
+# physical units. Ordering:
+#   [center_x, center_y, std_x, std_y, sin(2*theta), cos(2*theta), intensity]
+params:
+  scaling: [48.0, 48.0, 10.0, 10.0, 1.0, 1.0, 1.0]   # scaling_arr
+
+# ----------------------------------------------------------------------------
+# Datasets (sizes are before the bad-crop filter)
+# ----------------------------------------------------------------------------
+dataset:
+  training_size: 100000  # TRAINING_DATASET_SIZE (crops drawn with replacement)
+  validation_size: 10000 # VALIDATION_DATASET_SIZE
+  test_size: 10000       # TEST_DATASET_SIZE
+  batch_size: 128        # BATCH_SIZE
+
+# ----------------------------------------------------------------------------
+# QKeras model
+# ----------------------------------------------------------------------------
+model:
+  name: gaussian
+  total_bits: 8          # TOTAL_BITS
+  integer_bits: 0        # INTEGER_BITS
+  # One block per entry: QConv2D(3x3, valid) -> BatchNorm -> quantized ReLU -> MaxPool
+  conv_filters: [6, 8, 8]
+  pool_sizes: [2, 2, 3]
+  dense_units: 28        # Dense(relu) before the split parameter heads
+
+# ----------------------------------------------------------------------------
+# Loss: weighted reconstruction MSE, weight = target pixel + bg_weight
+# ----------------------------------------------------------------------------
+loss:
+  bg_weight: 0.13        # BG_WEIGHT
+
+# ----------------------------------------------------------------------------
+# Training
+# ----------------------------------------------------------------------------
+training:
+  train: true            # TRAIN_MODEL
+  load_from: null        # LOAD_MODEL: path to a saved model to load before training/testing
+  epochs: 100            # NUM_EPOCHS
+  learning_rate: 1.0e-3
+  global_clipnorm: 1.0
+  early_stopping:
+    patience: 10         # EARLY_STOPPING_PATIENCE
+    min_delta: 1.0e-4    # MIN_DELTA
+  reduce_lr:
+    factor: 0.5
+    patience: 5
+    min_lr: 1.0e-5
+
+# ----------------------------------------------------------------------------
+# Outputs
+# ----------------------------------------------------------------------------
+output:
+  save_model: true       # SAVE_MODEL
+  models_dir: Models
+  model_name: real_flow_model   # MODEL_NAME -> saved to <models_dir>/<model_name>
+  num_plot_examples: 4   # test examples to render (image / predicted reconstruction) as PNGs
