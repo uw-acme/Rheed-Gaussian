@@ -30,3 +30,21 @@ python train_real.py configs/real.yaml
 `data.path` points at the h5 file in `FastRHEED/data/` and is relative to the
 directory the script is run from. Outputs go to `Models/<output.model_name>/`
 as above.
+
+## Training on a mix of real and synthetic data
+
+`train_hybrid.py` combines the two: `hybrid.synthetic_fraction` of the training
+and validation crops are synthetic Gaussians, the rest real crops. The real
+crops are sampled and filtered first and the synthetic count is derived from
+the surviving real count, so the share is exact. The model is tested separately
+on a real and a synthetic test set.
+
+```bash
+python train_hybrid.py configs/hybrid.yaml
+```
+
+`configs/hybrid.yaml` takes its real-data, model, loss and training sections
+from `configs/real.yaml` and the `gaussian` section from `configs/synthetic.yaml`.
+Outputs go to `Models/<output.model_name>/` as above, with
+`test_loss_recon_real` / `test_loss_recon_synthetic` in `test_metrics.json` and
+plots under `plots/real/` and `plots/synthetic/`.
