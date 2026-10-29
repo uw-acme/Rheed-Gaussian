@@ -292,14 +292,37 @@ def make_training_model(model, gaussian_gen_tf):
     return Model(inputs=model.input, outputs=x_reconstruction, name=f"{model.name}_training")
 
 
-def make_recon_loss(bg_weight: float):
+def make_recon_loss(bg_weight: float, peak_norm: float = 0.0, peak_floor: float = 0.0):
+    """Weighted reconstruction MSE, optionally evaluated on peak-normalized images.
+
+    With P = max(peak of y_true, peak_floor) per crop and y' = y / P**peak_norm:
+        mean over the batch of  sum over pixels of  (y'_true + bg_weight) * (y'_true - y'_pred)**2
+    peak_norm = 0 is the plain weighted MSE, whose value for a given relative error grows as
+    peak**3 (bright spots dominate); peak_norm = 1 is the same loss on peak-normalized crops,
+    flat in the peak (bg_weight then weights the background relative to the peak). peak_floor
+    caps the gain on dim, noisy crops: anything below it is normalized as if its peak were
+    peak_floor.
+    """
     import tensorflow as tf
 
     def recon_loss(y_true, y_pred):
+        if peak_norm:
+            peak = tf.maximum(tf.reduce_max(y_true, axis=[1, 2, 3], keepdims=True), peak_floor)
+            scale = peak ** peak_norm
+            y_true, y_pred = y_true / scale, y_pred / scale
         W = y_true + bg_weight
         return tf.reduce_mean(tf.reduce_sum(W * tf.square(y_true - y_pred), axis=[1, 2, 3]))
 
     return recon_loss
+
+
+def make_losses(cfg: dict):
+    """(training loss from cfg["loss"], plain loss with peak_norm 0 for comparable test metrics)."""
+    l = cfg["loss"]
+    return (
+        make_recon_loss(l["bg_weight"], l.get("peak_norm", 0.0), l.get("peak_floor", 0.0)),
+        make_recon_loss(l["bg_weight"]),
+    )
 
 
 def load_model(path: str):
@@ -410,7 +433,7 @@ def main():
 
     # ---- Model ----------------------------------------------------------
     tf = setup_tensorflow(cfg["seed"])
-    loss_fn = make_recon_loss(cfg["loss"]["bg_weight"])
+    loss_fn, plain_loss_fn = make_losses(cfg)
     gaussian_gen_tf = make_gaussian_gen_tf(cfg)
 
     t = cfg["training"]
@@ -438,8 +461,9 @@ def main():
 
     pred_recon = gaussian_gen_tf(tf.constant(predictions)).numpy()
     true_recon = gaussian_gen_tf(tf.constant(test_label)).numpy()
-    test_loss = float(loss_fn(tf.constant(test_img), tf.constant(pred_recon)).numpy())
-    print(f"[Test Loss (recon)]: {test_loss:.6f}")
+    test_loss = float(plain_loss_fn(tf.constant(test_img), tf.constant(pred_recon)).numpy())
+    test_loss_train = float(loss_fn(tf.constant(test_img), tf.constant(pred_recon)).numpy())
+    print(f"[Test Loss (recon, plain)]: {test_loss:.6f}  [training loss]: {test_loss_train:.6f}")
 
     # ---- Save -----------------------------------------------------------
     o = cfg["output"]
@@ -454,7 +478,7 @@ def main():
             with open(model_dir / "history.json", "w", encoding="utf-8") as f:
                 json.dump({k: [float(v) for v in vs] for k, vs in history.history.items()}, f, indent=2)
         with open(model_dir / "test_metrics.json", "w", encoding="utf-8") as f:
-            json.dump({"test_loss_recon": test_loss}, f, indent=2)
+            json.dump({"test_loss_recon": test_loss, "test_loss_recon_train": test_loss_train}, f, indent=2)
 
     if o["num_plot_examples"] > 0:
         plot_dir = (model_dir if o["save_model"] else Path(o["models_dir"])) / "plots"

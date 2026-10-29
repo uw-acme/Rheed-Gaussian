@@ -42,7 +42,7 @@ from train_synthetic import (  # noqa: E402
     load_model,
     make_datasets,
     make_gaussian_gen_tf,
-    make_recon_loss,
+    make_losses,
     make_training_model,
     setup_tensorflow,
     train,
@@ -184,7 +184,7 @@ def main():
 
     # ---- Model ----------------------------------------------------------
     tf = setup_tensorflow(cfg["seed"])
-    loss_fn = make_recon_loss(cfg["loss"]["bg_weight"])
+    loss_fn, plain_loss_fn = make_losses(cfg)
     gaussian_gen_tf = make_gaussian_gen_tf(cfg)
 
     t = cfg["training"]
@@ -211,8 +211,9 @@ def main():
     print(f"[Prediction Shape]: {predictions.shape}")
 
     pred_recon = gaussian_gen_tf(tf.constant(predictions)).numpy()
-    test_loss = float(loss_fn(tf.constant(test_img), tf.constant(pred_recon)).numpy())
-    print(f"[Test Loss (recon)]: {test_loss:.6f}")
+    test_loss = float(plain_loss_fn(tf.constant(test_img), tf.constant(pred_recon)).numpy())
+    test_loss_train = float(loss_fn(tf.constant(test_img), tf.constant(pred_recon)).numpy())
+    print(f"[Test Loss (recon, plain)]: {test_loss:.6f}  [training loss]: {test_loss_train:.6f}")
 
     # ---- Save -----------------------------------------------------------
     o = cfg["output"]
@@ -227,7 +228,8 @@ def main():
             with open(model_dir / "history.json", "w", encoding="utf-8") as f:
                 json.dump({k: [float(v) for v in vs] for k, vs in history.history.items()}, f, indent=2)
         with open(model_dir / "test_metrics.json", "w", encoding="utf-8") as f:
-            json.dump({"test_loss_recon": test_loss, "num_test_images": len(test_img)}, f, indent=2)
+            json.dump({"test_loss_recon": test_loss, "test_loss_recon_train": test_loss_train,
+                       "num_test_images": len(test_img)}, f, indent=2)
 
     if o["num_plot_examples"] > 0:
         plot_dir = (model_dir if o["save_model"] else Path(o["models_dir"])) / "plots"

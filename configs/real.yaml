@@ -56,10 +56,15 @@ model:
   dense_units: 28        # Dense(relu) before the split parameter heads
 
 # ----------------------------------------------------------------------------
-# Loss: weighted reconstruction MSE, weight = target pixel + bg_weight
+# Loss: weighted reconstruction MSE, weight = target pixel + bg_weight, on peak-normalized crops
 # ----------------------------------------------------------------------------
 loss:
   bg_weight: 0.13        # BG_WEIGHT
+  peak_norm: 1.0         # evaluate the loss on crops divided by peak**peak_norm: 0 = plain weighted
+                         # MSE (a given relative error costs ~peak**3, bright spots dominate);
+                         # 1 = flat in the peak. bg_weight is then relative to the peak.
+  peak_floor: 0.2        # crops dimmer than this are normalized as if their peak were peak_floor
+                         # (caps the gain on dim, noisy crops; >= filter.min_peak)
 
 # ----------------------------------------------------------------------------
 # Training

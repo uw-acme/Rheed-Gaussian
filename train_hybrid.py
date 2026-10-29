@@ -44,7 +44,7 @@ from train_synthetic import (
     load_model,
     make_datasets,
     make_gaussian_gen_tf,
-    make_recon_loss,
+    make_losses,
     make_training_model,
     parse_angle,
     setup_tensorflow,
@@ -130,7 +130,7 @@ def main():
 
     # ---- Model ----------------------------------------------------------
     tf = setup_tensorflow(cfg["seed"])
-    loss_fn = make_recon_loss(cfg["loss"]["bg_weight"])
+    loss_fn, plain_loss_fn = make_losses(cfg)
     gaussian_gen_tf = make_gaussian_gen_tf(cfg)
 
     t = cfg["training"]
@@ -156,10 +156,13 @@ def main():
     for source, img in test_img.items():
         predictions[source] = model.predict(img, batch_size=d["batch_size"])
         pred_recon[source] = gaussian_gen_tf(tf.constant(predictions[source])).numpy()
-        loss = float(loss_fn(tf.constant(img), tf.constant(pred_recon[source])).numpy())
+        loss = float(plain_loss_fn(tf.constant(img), tf.constant(pred_recon[source])).numpy())
+        loss_train = float(loss_fn(tf.constant(img), tf.constant(pred_recon[source])).numpy())
         test_metrics[f"test_loss_recon_{source}"] = loss
+        test_metrics[f"test_loss_recon_train_{source}"] = loss_train
         test_metrics[f"num_test_images_{source}"] = len(img)
-        print(f"[Test Loss (recon), {source}]: {loss:.6f} ({len(img)} images)")
+        print(f"[Test Loss (recon, plain), {source}]: {loss:.6f}  [training loss]: {loss_train:.6f} "
+              f"({len(img)} images)")
 
     # ---- Save -----------------------------------------------------------
     o = cfg["output"]
