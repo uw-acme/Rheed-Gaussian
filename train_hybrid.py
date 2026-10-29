@@ -64,6 +64,7 @@ def load_config(path: str | Path) -> dict:
     g = cfg["gaussian"]
     g["min_theta"] = parse_angle(g["min_theta"])
     g["max_theta"] = parse_angle(g["max_theta"])
+    g.setdefault("noise_mean", 0.0)
 
     frac = cfg["hybrid"]["synthetic_fraction"]
     if not 0.0 <= frac < 1.0:

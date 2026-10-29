@@ -56,6 +56,7 @@ def load_config(path: str | Path) -> dict:
     g = cfg["gaussian"]
     g["min_theta"] = parse_angle(g["min_theta"])
     g["max_theta"] = parse_angle(g["max_theta"])
+    g.setdefault("noise_mean", 0.0)
 
     if len(cfg["params"]["scaling"]) != NUM_PARAMS:
         raise ValueError(f"params.scaling must have {NUM_PARAMS} entries")
@@ -73,7 +74,8 @@ def load_config(path: str | Path) -> dict:
 
 
 class SyntheticGenerator:
-    """Generates crops containing one rotated 2D Gaussian plus its parameters."""
+    """Generates crops containing one rotated 2D Gaussian (plus an optional half-normal noise
+    floor, gaussian.noise_mean) and the Gaussian's parameters (the noise is not a parameter)."""
 
     def __init__(self, cfg: dict, rng: np.random.Generator):
         self.rng = rng
@@ -123,9 +125,15 @@ class SyntheticGenerator:
             g["max_intensity"] - g["min_intensity"]
         )
 
-        # Convert to 8 bit int
-        gaussian = self.gaussian_gen(center_x, center_y, std_x, std_y, theta)
-        gaussian = (gaussian * intensity * 255).astype(np.uint8)
+        gaussian = self.gaussian_gen(center_x, center_y, std_x, std_y, theta) * intensity
+        if g["noise_mean"] > 0:
+            # Half-normal noise floor, as Rheed-Eval/synthesize_ood.py adds to its frames:
+            # |N(0, 1)| per pixel, scaled to mean noise_mean (relative to a unit-amplitude spot)
+            noise = np.abs(rng.normal(0.0, 1.0, gaussian.shape))
+            gaussian = gaussian + noise * (g["noise_mean"] / noise.mean())
+
+        # Convert to 8 bit int (clipped: a bright spot plus the noise tail can exceed 1)
+        gaussian = np.clip(gaussian * 255, 0, 255).astype(np.uint8)
 
         params = np.array(
             [

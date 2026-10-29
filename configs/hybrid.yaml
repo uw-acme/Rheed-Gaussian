@@ -55,6 +55,8 @@ gaussian:
   max_theta: pi          # MAX_THETA
   min_intensity: 0.05     # MIN_INTENSITY
   max_intensity: 0.9     # MAX_INTENSITY
+  noise_mean: 0.01       # half-normal noise floor, |N(0,1)| per pixel scaled to this mean (relative
+                         # to a unit-amplitude spot), as Rheed-Eval/synthesize_ood.py NOISE_MEAN; 0 = none
 
 # Model outputs are normalized parameters; multiplying by `scaling` recovers
 # physical units (real.yaml values; Rheed-Eval reads them from the saved
