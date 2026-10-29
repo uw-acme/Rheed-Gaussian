@@ -37,24 +37,24 @@ image:
 # Real crops are background-subtracted (per-crop minimum) and divided by 256; crops
 # whose resulting peak is below min_peak are dropped ("bad crops").
 filter:
-  min_peak: 0.1          # is_valid_image: img.max() < min_peak -> invalid
+  min_peak: 0.05          # is_valid_image: img.max() < min_peak -> invalid
 
 # ----------------------------------------------------------------------------
 # Synthetic crops (one rotated 2D Gaussian per crop, no noise or background)
 # ----------------------------------------------------------------------------
 gaussian:
-  min_offset_x: -4       # MIN_OFFSET_X: center = x/2 + uniform(min_offset_x, max_offset_x)
-  max_offset_x: 4        # MAX_OFFSET_X
-  min_offset_y: -4       # MIN_OFFSET_Y
-  max_offset_y: 4        # MAX_OFFSET_Y
+  min_offset_x: -6       # MIN_OFFSET_X: center = x/2 + uniform(min_offset_x, max_offset_x)
+  max_offset_x: 6        # MAX_OFFSET_X
+  min_offset_y: -6       # MIN_OFFSET_Y
+  max_offset_y: 6        # MAX_OFFSET_Y
   min_std_x: 5           # MIN_STD_X
   max_std_x: 11          # MAX_STD_X
   min_std_y: 5           # MIN_STD_Y
   max_std_y: 11          # MAX_STD_Y
   min_theta: 0           # MIN_THETA (radians; a string such as "pi" or "pi/2" is accepted)
   max_theta: pi          # MAX_THETA
-  min_intensity: 0.2     # MIN_INTENSITY
-  max_intensity: 0.8     # MAX_INTENSITY
+  min_intensity: 0.05     # MIN_INTENSITY
+  max_intensity: 0.9     # MAX_INTENSITY
 
 # Model outputs are normalized parameters; multiplying by `scaling` recovers
 # physical units (real.yaml values; Rheed-Eval reads them from the saved
