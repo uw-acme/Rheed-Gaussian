@@ -1,0 +1,88 @@
+# Configuration for train_synthetic.py (script version of Generated_Flow.ipynb).
+#
+# Usage:
+#   python train_synthetic.py configs/synthetic.yaml
+#
+# Every constant that was a module-level global in the notebook lives here.
+
+seed: 0
+
+# ----------------------------------------------------------------------------
+# Synthetic image generation (one rotated 2D Gaussian per crop)
+# ----------------------------------------------------------------------------
+image:
+  x: 48                  # GAUSSIAN_X (crop width, pixels)
+  y: 48                  # GAUSSIAN_Y (crop height, pixels)
+
+gaussian:
+  min_offset_x: -4       # MIN_OFFSET_X: center = x/2 + uniform(min_offset_x, max_offset_x)
+  max_offset_x: 4        # MAX_OFFSET_X
+  min_offset_y: -4       # MIN_OFFSET_Y
+  max_offset_y: 4        # MAX_OFFSET_Y
+  min_std_x: 5           # MIN_STD_X
+  max_std_x: 11          # MAX_STD_X
+  min_std_y: 5           # MIN_STD_Y
+  max_std_y: 11          # MAX_STD_Y
+  min_theta: 0           # MIN_THETA (radians; a string such as "pi" or "pi/2" is accepted)
+  max_theta: pi          # MAX_THETA
+  min_intensity: 0.2     # MIN_INTENSITY
+  max_intensity: 0.8     # MAX_INTENSITY
+
+# Model outputs / labels are normalized parameters; multiplying by `scaling`
+# recovers physical units. Ordering:
+#   [center_x, center_y, std_x, std_y, sin(2*theta), cos(2*theta), intensity]
+params:
+  scaling: [48.0, 48.0, 24.0, 24.0, 1.0, 1.0, 1.0]   # scaling_arr
+
+# ----------------------------------------------------------------------------
+# Datasets
+# ----------------------------------------------------------------------------
+dataset:
+  training_size: 10000   # TRAINING_DATASET_SIZE
+  validation_size: 1000  # VALIDATION_DATASET_SIZE
+  test_size: 1000        # TEST_DATASET_SIZE
+  batch_size: 50         # BATCH_SIZE
+
+# ----------------------------------------------------------------------------
+# QKeras model
+# ----------------------------------------------------------------------------
+model:
+  name: gaussian
+  total_bits: 8          # TOTAL_BITS
+  integer_bits: 0        # INTEGER_BITS
+  # One block per entry: QConv2D(3x3, valid) -> BatchNorm -> quantized ReLU -> MaxPool
+  conv_filters: [6, 8, 8]
+  pool_sizes: [2, 2, 3]
+  dense_units: 28        # Dense(relu) before the split parameter heads
+
+# ----------------------------------------------------------------------------
+# Loss: weighted reconstruction MSE, weight = target pixel + bg_weight
+# ----------------------------------------------------------------------------
+loss:
+  bg_weight: 0.05        # BG_WEIGHT
+
+# ----------------------------------------------------------------------------
+# Training
+# ----------------------------------------------------------------------------
+training:
+  train: true            # TRAIN_MODEL
+  load_from: null        # LOAD_MODEL: path to a saved model to load before training/testing
+  epochs: 100            # NUM_EPOCHS
+  learning_rate: 1.0e-3
+  global_clipnorm: 1.0
+  early_stopping:
+    patience: 10         # EARLY_STOPPING_PATIENCE
+    min_delta: 1.0e-4    # MIN_DELTA
+  reduce_lr:
+    factor: 0.5
+    patience: 5
+    min_lr: 1.0e-5
+
+# ----------------------------------------------------------------------------
+# Outputs
+# ----------------------------------------------------------------------------
+output:
+  save_model: true       # SAVE_MODEL
+  models_dir: Models
+  model_name: gen_flow_model   # MODEL_NAME -> saved to <models_dir>/<model_name>
+  num_plot_examples: 4   # test examples to render (image / true / predicted reconstruction) as PNGs

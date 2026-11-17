@@ -5,9 +5,6 @@
 gaussian_hls4ml_Q_Gen/
 gaussian_hls4ml_Q_Real/
 
-# Models
-Models
-
 __pycache__/
 # hls_convert.py output
 *_hls4ml_*/

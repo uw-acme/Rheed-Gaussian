@@ -1,0 +1,8 @@
+{
+  "test_loss_recon_real": 0.1595640629529953,
+  "test_loss_recon_train_real": 1.8076666593551636,
+  "num_test_images_real": 6795,
+  "test_loss_recon_synthetic": 0.21933308243751526,
+  "test_loss_recon_train_synthetic": 1.2620418071746826,
+  "num_test_images_synthetic": 10000
+}
