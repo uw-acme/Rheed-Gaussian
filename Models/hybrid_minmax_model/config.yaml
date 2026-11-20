@@ -1,0 +1,132 @@
+# Configuration for train_hybrid.py: train on a mix of real and synthetic spot crops.
+#
+# Usage:
+#   python train_hybrid.py configs/hybrid.yaml
+#
+# The real-data, filter, params, dataset, model, loss and training sections are
+# those of configs/real.yaml; the gaussian section is that of
+# configs/synthetic.yaml. Relative paths are resolved from the directory the
+# script is run in.
+
+seed: 0
+
+# ----------------------------------------------------------------------------
+# Mix
+# ----------------------------------------------------------------------------
+hybrid:
+  synthetic_fraction: 0.5  # share of the training and validation sets that is synthetic.
+                           # Real crops are requested at dataset.*_size and filtered first;
+                           # the synthetic count is derived from the surviving real count so
+                           # the share is exact (the total is a little below dataset.*_size).
+
+# ----------------------------------------------------------------------------
+# Real RHEED spot crops: <growth>/<spot> datasets of shape (N, y, x)
+# ----------------------------------------------------------------------------
+data:
+  path: ../data/RHEED_4848_test6.h5   # RHEED_data_file
+  spots: [spot_1, spot_2, spot_3]     # SPOTS
+  training_growths: 7    # TRAINING_GROWTHS
+  validation_growths: 2  # VALIDATION_GROWTHS
+  test_growths: 1        # TEST_GROWTHS
+  images_per_growth: 10000  # IMAGES_PER_GROWTH (crops sampled without replacement per growth and spot)
+
+image:
+  x: 48                  # GAUSSIAN_X (crop width, pixels; real crops and synthetic images)
+  y: 48                  # GAUSSIAN_Y (crop height, pixels)
+
+# Real crops whose contrast (max - min) / 256 is below min_peak are dropped ("bad crops"),
+# before normalization.
+filter:
+  min_peak: 0.05          # (max - min) / 256 < min_peak -> invalid
+
+# ----------------------------------------------------------------------------
+# Synthetic crops (one rotated 2D Gaussian per crop, no noise or background)
+# ----------------------------------------------------------------------------
+gaussian:
+  min_offset_x: -6       # MIN_OFFSET_X: center = x/2 + uniform(min_offset_x, max_offset_x)
+  max_offset_x: 6        # MAX_OFFSET_X
+  min_offset_y: -6       # MIN_OFFSET_Y
+  max_offset_y: 6        # MAX_OFFSET_Y
+  min_std_x: 5           # MIN_STD_X
+  max_std_x: 11          # MAX_STD_X
+  min_std_y: 5           # MIN_STD_Y
+  max_std_y: 11          # MAX_STD_Y
+  min_theta: 0           # MIN_THETA (radians; a string such as "pi" or "pi/2" is accepted)
+  max_theta: pi          # MAX_THETA
+  min_intensity: 0.05     # MIN_INTENSITY
+  max_intensity: 0.9     # MAX_INTENSITY
+  noise_mean: 0.01       # half-normal noise floor, |N(0,1)| per pixel scaled to this mean (relative
+                         # to a unit-amplitude spot), as Rheed-Eval/synthesize_ood.py NOISE_MEAN; 0 = none
+
+# Model outputs are normalized parameters; multiplying by `scaling` recovers
+# physical units (real.yaml values; Rheed-Eval reads them from the saved
+# config.yaml). Ordering:
+#   [center_x, center_y, std_x, std_y, sin(2*theta), cos(2*theta), intensity]
+params:
+  scaling: [48.0, 48.0, 10.0, 10.0, 1.0, 1.0, 1.0]   # scaling_arr
+
+# ----------------------------------------------------------------------------
+# Datasets (real crops requested before the bad-crop filter; see hybrid above)
+# ----------------------------------------------------------------------------
+dataset:
+  training_size: 100000  # TRAINING_DATASET_SIZE (real crops drawn with replacement)
+  validation_size: 10000 # VALIDATION_DATASET_SIZE
+  test_size: 10000       # TEST_DATASET_SIZE, per source: real (before filter) and synthetic
+  batch_size: 128        # BATCH_SIZE
+
+# ----------------------------------------------------------------------------
+# GaussNN input normalization (normalize.py)
+# ----------------------------------------------------------------------------
+normalization:
+  mode: minmax           # minmax: per-crop (p - min) / (max - min) in [0, 1], bit-exact with
+                         #   Rheed-HW pre_gaus_normalizer.sv (8-bit pixels, 10 fractional bits);
+                         # bg256: legacy (p - min) / 256 (synthetic: p / 256). Missing -> bg256.
+
+# ----------------------------------------------------------------------------
+# QKeras model
+# ----------------------------------------------------------------------------
+model:
+  name: gaussian
+  total_bits: 8          # TOTAL_BITS
+  integer_bits: 0        # INTEGER_BITS
+  # One block per entry: QConv2D(3x3, valid) -> BatchNorm -> quantized ReLU -> MaxPool
+  conv_filters: [6, 8, 8]
+  pool_sizes: [2, 2, 3]
+  dense_units: 28        # Dense(relu) before the split parameter heads
+
+# ----------------------------------------------------------------------------
+# Loss: weighted reconstruction MSE, weight = target pixel + bg_weight, on peak-normalized crops
+# ----------------------------------------------------------------------------
+loss:
+  bg_weight: 0.13        # BG_WEIGHT (real.yaml)
+  peak_norm: 1.0         # evaluate the loss on crops divided by peak**peak_norm: 0 = plain weighted
+                         # MSE (a given relative error costs ~peak**3, bright spots dominate);
+                         # 1 = flat in the peak. bg_weight is then relative to the peak.
+  peak_floor: 0.2        # crops dimmer than this are normalized as if their peak were peak_floor
+                         # (caps the gain on dim, noisy crops; >= filter.min_peak)
+
+# ----------------------------------------------------------------------------
+# Training
+# ----------------------------------------------------------------------------
+training:
+  train: true            # TRAIN_MODEL
+  load_from: null        # LOAD_MODEL: path to a saved model to load before training/testing
+  epochs: 100            # NUM_EPOCHS
+  learning_rate: 1.0e-3
+  global_clipnorm: 1.0
+  early_stopping:
+    patience: 10         # EARLY_STOPPING_PATIENCE
+    min_delta: 1.0e-4    # MIN_DELTA
+  reduce_lr:
+    factor: 0.5
+    patience: 5
+    min_lr: 1.0e-5
+
+# ----------------------------------------------------------------------------
+# Outputs
+# ----------------------------------------------------------------------------
+output:
+  save_model: true       # SAVE_MODEL
+  models_dir: Models
+  model_name: hybrid_minmax_model   # hybrid_flow_model retrained on min-max (hardware) normalized crops
+  num_plot_examples: 4   # test examples per source to render as PNGs under plots/{real,synthetic}
