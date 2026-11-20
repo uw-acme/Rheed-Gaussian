@@ -7,7 +7,7 @@ YAML config file:
 
 Pipeline:
     1. Real crops: split the growths into train / validation / test, sample
-       crops, background-subtract, normalize and drop dim crops, exactly as
+       crops, normalize (``normalization.mode``) and drop low-contrast crops, exactly as
        ``train_real.py``.
     2. Synthetic crops: single rotated 2D Gaussians, exactly as
        ``train_synthetic.py``.
@@ -34,6 +34,7 @@ from pathlib import Path
 
 import numpy as np
 
+from normalize import get_mode
 from train_real import gen_data as gen_real
 from train_real import load_config as load_real_config
 from train_real import load_splits
@@ -92,8 +93,8 @@ def mix(real: np.ndarray, synthetic: np.ndarray) -> np.ndarray:
     return np.concatenate([real, synthetic])
 
 
-def gen_mixed(real_pool, requested: int, rng, min_peak, frac, syn_gen, desc: str) -> np.ndarray:
-    real = gen_real(requested, real_pool, rng, min_peak, desc=f"{desc} (real)")
+def gen_mixed(real_pool, requested: int, rng, min_peak, frac, syn_gen, desc: str, mode: str) -> np.ndarray:
+    real = gen_real(requested, real_pool, rng, min_peak, desc=f"{desc} (real)", mode=mode)
     n_syn = synthetic_count(len(real), frac)
     syn, _ = syn_gen.gen_data(n_syn, desc=f"{desc} (synthetic)")
     print(f"[{desc} Mix]: {len(real)} real + {n_syn} synthetic "
@@ -118,14 +119,17 @@ def main():
     d = cfg["dataset"]
     frac = cfg["hybrid"]["synthetic_fraction"]
     min_peak = cfg["filter"]["min_peak"]
+    mode = get_mode(cfg)
+    print(f"[Normalization]: {mode}")
 
     splits = load_splits(cfg, rng)
     syn_gen = SyntheticGenerator(cfg, rng)
 
-    train_img = gen_mixed(splits["Train"], d["training_size"], rng, min_peak, frac, syn_gen, "Train")
-    val_img = gen_mixed(splits["Val"], d["validation_size"], rng, min_peak, frac, syn_gen, "Val")
+    train_img = gen_mixed(splits["Train"], d["training_size"], rng, min_peak, frac, syn_gen, "Train", mode)
+    val_img = gen_mixed(splits["Val"], d["validation_size"], rng, min_peak, frac, syn_gen, "Val", mode)
 
-    test_img = {"real": gen_real(d["test_size"], splits["Test"], rng, min_peak, desc="Test (real)")}
+    test_img = {"real": gen_real(d["test_size"], splits["Test"], rng, min_peak, desc="Test (real)",
+                                  mode=mode)}
     test_img["synthetic"], test_label_syn = syn_gen.gen_data(d["test_size"], desc="Test (synthetic)")
     del splits
 

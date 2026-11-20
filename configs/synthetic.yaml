@@ -46,6 +46,14 @@ dataset:
   batch_size: 50         # BATCH_SIZE
 
 # ----------------------------------------------------------------------------
+# GaussNN input normalization (normalize.py)
+# ----------------------------------------------------------------------------
+normalization:
+  mode: minmax           # minmax: per-crop (p - min) / (max - min) in [0, 1], bit-exact with
+                         #   Rheed-HW pre_gaus_normalizer.sv (8-bit pixels, 10 fractional bits);
+                         # bg256: legacy (p - min) / 256 (synthetic: p / 256). Missing -> bg256.
+
+# ----------------------------------------------------------------------------
 # QKeras model
 # ----------------------------------------------------------------------------
 model:

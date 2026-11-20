@@ -8,8 +8,9 @@ conversion). All constants live in a YAML config file:
 Pipeline:
     1. Split the growths of the h5 file into train / validation / test and
        sample spot crops from each.
-    2. Draw crops with replacement, subtract each crop's minimum as background,
-       normalize, and drop crops whose peak is too dim.
+    2. Draw crops with replacement, normalize them per crop (``normalization.mode``:
+       ``minmax`` = the hardware pre_gaus_normalizer, see normalize.py), and drop crops
+       whose contrast is too low.
     3. Build (or load) the quantized ``gaussian`` model and train it
        self-supervised through the fixed reconstruction layer (no parameter
        labels exist for real data).
@@ -36,6 +37,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
+from normalize import get_mode, normalize  # noqa: E402
 from train_synthetic import (  # noqa: E402
     NUM_PARAMS,
     build_model,
@@ -116,17 +118,24 @@ def load_splits(cfg: dict, rng: np.random.Generator) -> dict[str, np.ndarray]:
 
 
 def gen_data(
-    num_images: int, data: np.ndarray, rng: np.random.Generator, min_peak: float, desc: str = ""
+    num_images: int, data: np.ndarray, rng: np.random.Generator, min_peak: float, desc: str = "",
+    mode: str = "bg256",
 ) -> np.ndarray:
-    """Sample crops with replacement, background-subtract, normalize and filter."""
+    """Sample crops with replacement, normalize (``mode``, see normalize.py) and filter."""
     idx = rng.integers(0, data.shape[0], size=num_images)
-    imgs = data[idx].astype(np.float32)
-    bg = imgs.reshape(num_images, -1).min(axis=1).reshape(num_images, 1, 1, 1)
-    imgs = np.clip(imgs - bg, 0.0, None) / 256.0
+    raw = data[idx].astype(np.float32)
+    if mode == "minmax" and raw.max() > 255:
+        print(f"[{desc} Warning]: raw crops reach {raw.max():.0f} > 255; the hardware sees 8-bit "
+              "pixels, so values are clipped to 255 before normalizing")
+    imgs = normalize(raw, mode)
     print(f"[{desc} Images Shape]: {imgs.shape}")
 
-    # Filter out bad crops: peak must be bright enough to be a real spot
-    valid_mask = imgs.reshape(num_images, -1).max(axis=1) >= min_peak
+    # Filter out bad crops: the spot must stand out from the background by min_peak (in units
+    # of 256 counts). This is the raw contrast (max - min) / 256, i.e. the peak of the old
+    # bg256-normalized crop, so the same crops are kept whatever the normalization mode.
+    flat = raw.reshape(num_images, -1)
+    contrast = (flat.max(axis=1) - flat.min(axis=1)) / 256.0
+    valid_mask = contrast >= min_peak
     print(f"[{desc} Valid]: {valid_mask.sum()} / {len(valid_mask)} ({100 * valid_mask.mean():.1f}%)")
     return imgs[valid_mask]
 
@@ -177,9 +186,11 @@ def main():
     splits = load_splits(cfg, rng)
     d = cfg["dataset"]
     min_peak = cfg["filter"]["min_peak"]
-    train_img = gen_data(d["training_size"], splits["Train"], rng, min_peak, desc="Train")
-    val_img = gen_data(d["validation_size"], splits["Val"], rng, min_peak, desc="Val")
-    test_img = gen_data(d["test_size"], splits["Test"], rng, min_peak, desc="Test")
+    mode = get_mode(cfg)
+    print(f"[Normalization]: {mode}")
+    train_img = gen_data(d["training_size"], splits["Train"], rng, min_peak, desc="Train", mode=mode)
+    val_img = gen_data(d["validation_size"], splits["Val"], rng, min_peak, desc="Val", mode=mode)
+    test_img = gen_data(d["test_size"], splits["Test"], rng, min_peak, desc="Test", mode=mode)
     del splits
 
     # ---- Model ----------------------------------------------------------

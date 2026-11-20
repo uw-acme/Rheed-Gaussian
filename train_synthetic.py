@@ -33,6 +33,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
+from normalize import crop_stats, get_mode, normalize, to_pixels  # noqa: E402
 
 NUM_PARAMS = 7  # [cx, cy, sx, sy, sin2t, cos2t, intensity]
 
@@ -83,6 +84,7 @@ class SyntheticGenerator:
         self.image_y = cfg["image"]["y"]
         self.g = cfg["gaussian"]
         self.scaling = np.array(cfg["params"]["scaling"], dtype=np.float32)
+        self.mode = get_mode(cfg)
 
         # Pixel grid reused by every gaussian_gen call
         self.X, self.Y = np.meshgrid(np.arange(self.image_x), np.arange(self.image_y))
@@ -154,8 +156,19 @@ class SyntheticGenerator:
 
         for i in tqdm(range(num_images), desc=desc):
             img, params = self.img_gen()
-            img_arr[i] = img.astype(np.float32) / 256.0  # Normalize values to [0, 1)
-            label_arr[i] = params.astype(np.float32) / self.scaling  # Normalize with scaling array
+            img_arr[i] = img.astype(np.float32)
+            label_arr[i] = params.astype(np.float32)
+
+        if self.mode == "minmax":
+            # Per-crop min-max, as the hardware pre_gaus_normalizer. The spot amplitude in
+            # normalized units is (intensity * 255) / (max - min); the noise floor and the
+            # min offset are background, not part of the Gaussian.
+            _, rng = crop_stats(to_pixels(img_arr))
+            label_arr[:, 6] = label_arr[:, 6] * 255.0 / np.maximum(rng, 1)
+            img_arr = normalize(img_arr, self.mode)
+        else:
+            img_arr /= 256.0  # legacy: values in [0, 1), no background subtraction
+        label_arr /= self.scaling  # Normalize with scaling array
 
         print(f"[{desc} Images Shape]: {img_arr.shape}")
         print(f"[{desc} Labels Shape]: {label_arr.shape}")
